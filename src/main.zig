@@ -10,12 +10,13 @@ const Digest = @import("Digest.zig");
 
 const DISTRIBUTION_SITE = std.Uri.parse("https://ziglang.org/download/index.json") catch unreachable;
 const DEFAULT_BASE_DIR = "~/.local/";
-const DEFAULT_DISTRIBUTION = "x86_64-linux";
+const DEFAULT_DISTRIBUTION = @tagName(builtin.cpu.arch) ++ "-" ++ @tagName(builtin.os.tag);
+
 const SHASUM_LENGTH = Sha256.digest_length * 2;
 
 const TEMP_HOME = switch (builtin.os.tag) {
     .macos, .linux => "/tmp",
-    else => @panic("get a real os BRUH"),
+    else => @panic("I don't recognise that os"),
 };
 
 const ENV = struct {
@@ -99,11 +100,20 @@ pub fn main() !void {
 
     try downloadZig(alloc, &arena_impl, build_dir, root_dir, distribution);
     try downloadZls(alloc, build_dir, root_dirname);
+    println("Complete!", .{});
+    std.process.cleanExit();
 }
 
 fn cleanupExistingZigInstallation(root_dir: Dir) !void {
-    try root_dir.deleteTree("lib/zig");
-    try root_dir.deleteFile("bin/zig");
+    log.debug("cleaning up existing installation if exists", .{});
+    _ = root_dir.deleteTree("lib/zig") catch |err| switch (err) {
+        error.NotDir, error.BadPathName => {},
+        else => return err,
+    };
+    _ = root_dir.deleteFile("bin/zig") catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
 }
 
 pub fn downloadZig(alloc: Allocator, arena_impl: *std.heap.ArenaAllocator, build_dir: Dir, root_dir: Dir, distribution_name: []const u8) !void {
@@ -230,7 +240,6 @@ pub fn downloadZig(alloc: Allocator, arena_impl: *std.heap.ArenaAllocator, build
     }
 
     println("Zig downloaded successfully", .{});
-    std.process.cleanExit();
 }
 
 fn fail(e: anyerror) !void {
@@ -252,32 +261,6 @@ pub fn makeTmp(home: Dir) !struct { Dir, [22]u8 } {
         };
         return .{ dir, file_name };
     }
-}
-
-// TODO:
-// it should create a temp folder and then unpack into that
-// also instead of ~/.local/bin it should either unpack into `/` or `/.local`
-// depending on if ~/.local/share/docs or whatever is a thing
-
-// TODO: check if existing zig binary exists
-// if so, check when it was created,
-// if it's older than the newest version of zig, overwrite it
-// if it's newer than the newest version of zig, print the newest version of zig and exit
-
-// TODO: download zls also
-
-test "foo" {
-    const input = "hello i am a test\n";
-    const str: []const u8 = input;
-    const exp = "0a5d4e302ed86d10991aca49b6ef9f24a4aa926a7a2df7324063f9bc0999e981";
-
-    var sha = Sha256.init(.{});
-    sha.update(str);
-    const final_bin = sha.finalResult();
-    const final = std.fmt.bytesToHex(&final_bin, .lower);
-    log.err("DEBUG: final: {s}, final.len: {}", .{ final, final.len });
-    log.err("DEBUG: exp: {s}, exp.len: {}", .{ exp, exp.len });
-    try std.testing.expectEqualStrings(exp, &final);
 }
 
 pub fn downloadFile(alloc: Allocator, dir: std.fs.Dir, filename: []const u8, dlUrl: std.Uri, shasum: *const [SHASUM_LENGTH]u8) !void {
