@@ -296,7 +296,9 @@ pub fn downloadFile(alloc: Allocator, dir: std.fs.Dir, filename: []const u8, dlU
 
     var sha = Sha256.init(.{});
 
-    var writer = file.writer();
+    const file_writer = file.writer();
+    var bw = std.io.bufferedWriter(file_writer);
+    var writer = bw.writer();
     var reader = req.reader();
 
     {
@@ -308,6 +310,7 @@ pub fn downloadFile(alloc: Allocator, dir: std.fs.Dir, filename: []const u8, dlU
             sha.update(buf[0..n]);
         }
     }
+    try bw.flush();
 
     const final_sha = std.fmt.bytesToHex(sha.finalResult(), .lower);
     if (!std.ascii.eqlIgnoreCase(&final_sha, shasum)) {
